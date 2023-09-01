@@ -1,6 +1,6 @@
 from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
-from models import Informer, Autoformer, Transformer, DLinear, Linear, NLinear, Ours
+from models import Informer, Autoformer, Transformer, DLinear, Linear, NLinear, Ours, TSMixer
 from utils.tools import EarlyStopping, adjust_learning_rate, visual, test_params_flop
 from utils.metrics import metric
 
@@ -31,7 +31,8 @@ class Exp_Main(Exp_Basic):
             'DLinear': DLinear,
             'NLinear': NLinear,
             'Linear': Linear,
-            'Ours': Ours
+            'Ours': Ours,
+            'TSMixer': TSMixer,
         }
         model = model_dict[self.args.model].Model(self.args).float()
 
@@ -83,7 +84,7 @@ class Exp_Main(Exp_Basic):
                 else:
                     if 'Linear' in self.args.model:
                         outputs = self.model(batch_x)
-                    elif self.args.model == 'Ours':
+                    elif self.args.model == 'Ours' or self.args.model == 'TSMixer':
                         outputs = self.model(batch_x)
                     else:
                         if self.args.output_attention:

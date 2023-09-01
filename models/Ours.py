@@ -141,7 +141,6 @@ class Model(nn.Module):
                 self.seasonal_backbones.append(mlp_layer)
             else:
                 seasonal_backbone = nn.ModuleList()
-                # padding to same
                 seasonal_backbone.append(nn.Conv1d(self.channels, self.channels, kernel_size=3, padding = 'same'))
                 seasonal_backbone.append(nn.Linear(ceiled_seq_len  + ceiled_pred_len, ceiled_seq_len + ceiled_pred_len))
                 self.seasonal_backbones.append(seasonal_backbone)
@@ -204,6 +203,7 @@ class Model(nn.Module):
                         .unfold(-1, self.scales[ind], self.scales[ind]).permute(0,2,1)) 
                         for i in range(self.channels)], dim=1)
             else:
+                x = nn.BatchNorm1d(self.channels)(x)
                 z = nn.Dropout(0.1)(self.seasonal_backbones[ind][0](x)) + x
                 z = z.unfold(-1, self.scales[ind], self.scales[ind]).permute(0,1,3,2)
                 z = self.seasonal_backbones[ind][1](z)

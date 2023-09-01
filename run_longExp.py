@@ -58,12 +58,18 @@ parser.add_argument('--factor', type=int, default=1, help='attn factor')
 parser.add_argument('--distil', action='store_false',
                     help='whether to use distilling in encoder, using this argument means not using distilling',
                     default=True)
-parser.add_argument('--dropout', type=float, default=0.05, help='dropout')
 parser.add_argument('--embed', type=str, default='timeF',
                     help='time features encoding, options:[timeF, fixed, learned]')
 parser.add_argument('--activation', type=str, default='gelu', help='activation')
 parser.add_argument('--output_attention', action='store_true', help='whether to output attention in ecoder')
 parser.add_argument('--do_predict', action='store_true', help='whether to predict unseen future data')
+
+# TSMixer
+parser.add_argument('--norm_type', type=str, default='B', help='normalization type')
+parser.add_argument('--n_block', type=int, default=2, help='number of blocks')
+parser.add_argument('--dropout', type=float, default=0.9, help='dropout')
+parser.add_argument('--ff_dim', type=int, default=64, help='feed forward dimension')
+parser.add_argument('--target_slice', type=int, default=None, help='target slice')
 
 # optimization
 parser.add_argument('--num_workers', type=int, default=10, help='data loader num workers')
