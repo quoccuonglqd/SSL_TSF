@@ -3,8 +3,8 @@ if [ ! -d "./logs" ]; then
     mkdir ./logs
 fi
 
-if [ ! -d "./logs/LongForecasting" ]; then
-    mkdir ./logs/LongForecasting
+if [ ! -d "./logs/LongForecasting_Finetune" ]; then
+    mkdir ./logs/LongForecasting_Finetune
 fi
 seq_len=96
 # model_name=DLinear
@@ -24,7 +24,9 @@ python -u run_longExp.py \
   --use_gpu True \
   --des 'Exp' \
   --individual \
-  --itr 1 --batch_size 8 --learning_rate 0.0005 >logs/LongForecasting/$model_name'-'individual'_'Exchange_$seq_len'_'96.log 
+  --finetune \
+  --pretrained_path checkpoints/BYOL-Individual_Exchange_96_96_Ours_custom_ftM_sl96_ll48_pl96_dm512_nh8_el2_dl1_df2048_fc1_ebtimeF_dtTrue_Exp_0 \
+  --itr 1 --batch_size 8 --learning_rate 0.0005 >logs/LongForecasting_Finetune/$model_name'_'Exchange_$seq_len'_'96.log 
 
 python -u run_longExp.py \
   --is_training 1 \
@@ -40,7 +42,9 @@ python -u run_longExp.py \
   --use_gpu True \
   --des 'Exp' \
   --individual \
-  --itr 1 --batch_size 8 --learning_rate 0.0005 >logs/LongForecasting/$model_name'-'individual'_'Exchange_$seq_len'_'192.log 
+  --finetune \
+  --pretrained_path checkpoints/BYOL-Individual_Exchange_96_192_Ours_custom_ftM_sl96_ll48_pl192_dm512_nh8_el2_dl1_df2048_fc1_ebtimeF_dtTrue_Exp_0 \
+  --itr 1 --batch_size 8 --learning_rate 0.0005 >logs/LongForecasting_Finetune/$model_name'_'Exchange_$seq_len'_'192.log 
 
 python -u run_longExp.py \
   --is_training 1 \
@@ -56,7 +60,9 @@ python -u run_longExp.py \
   --use_gpu True \
   --des 'Exp' \
   --individual \
-  --itr 1 --batch_size 32  --learning_rate 0.0005 >logs/LongForecasting/$model_name'-'individual'_'Exchange_$seq_len'_'336.log 
+  --finetune \
+  --pretrained_path checkpoints/BYOL-Individual_Exchange_96_336_Ours_custom_ftM_sl96_ll48_pl336_dm512_nh8_el2_dl1_df2048_fc1_ebtimeF_dtTrue_Exp_0 \
+  --itr 1 --batch_size 32  --learning_rate 0.0005 >logs/LongForecasting_Finetune/$model_name'_'Exchange_$seq_len'_'336.log 
 
 python -u run_longExp.py \
   --is_training 1 \
@@ -72,4 +78,6 @@ python -u run_longExp.py \
   --use_gpu True \
   --des 'Exp' \
   --individual \
-  --itr 1 --batch_size 32 --learning_rate 0.0005 >logs/LongForecasting/$model_name'-'individual'_'Exchange_$seq_len'_'720.log
+  --finetune \
+  --pretrained_path checkpoints/BYOL-Individual_Exchange_96_720_Ours_custom_ftM_sl96_ll48_pl720_dm512_nh8_el2_dl1_df2048_fc1_ebtimeF_dtTrue_Exp_0 \
+  --itr 1 --batch_size 32 --learning_rate 0.0005 >logs/LongForecasting_Finetune/$model_name'_'Exchange_$seq_len'_'720.log

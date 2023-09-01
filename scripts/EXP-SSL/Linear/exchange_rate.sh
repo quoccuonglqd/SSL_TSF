@@ -3,19 +3,21 @@ if [ ! -d "./logs" ]; then
     mkdir ./logs
 fi
 
-if [ ! -d "./logs/LongForecasting" ]; then
-    mkdir ./logs/LongForecasting
+if [ ! -d "./logs/SSL" ]; then
+    mkdir ./logs/SSL
 fi
 seq_len=96
 # model_name=DLinear
 model_name=Ours
+ssl_model_name=BYOL
 
-python -u run_longExp.py \
+python -u run_ssl.py \
   --is_training 1 \
   --root_path ./dataset/ \
   --data_path exchange_rate.csv \
   --model_id Exchange_$seq_len'_'96 \
   --model $model_name \
+  --ssl_model_id $ssl_model_name \
   --data custom \
   --features M \
   --seq_len $seq_len \
@@ -24,14 +26,15 @@ python -u run_longExp.py \
   --use_gpu True \
   --des 'Exp' \
   --individual \
-  --itr 1 --batch_size 8 --learning_rate 0.0005 >logs/LongForecasting/$model_name'-'individual'_'Exchange_$seq_len'_'96.log 
+  --itr 1 --batch_size 8 --learning_rate 0.0005 >logs/SSL/$model_name'_'Exchange_$seq_len'_'96.log 
 
-python -u run_longExp.py \
+python -u run_ssl.py \
   --is_training 1 \
   --root_path ./dataset/ \
   --data_path exchange_rate.csv \
   --model_id Exchange_$seq_len'_'192 \
   --model $model_name \
+  --ssl_model_id $ssl_model_name \
   --data custom \
   --features M \
   --seq_len $seq_len \
@@ -40,14 +43,15 @@ python -u run_longExp.py \
   --use_gpu True \
   --des 'Exp' \
   --individual \
-  --itr 1 --batch_size 8 --learning_rate 0.0005 >logs/LongForecasting/$model_name'-'individual'_'Exchange_$seq_len'_'192.log 
+  --itr 1 --batch_size 8 --learning_rate 0.0005 >logs/SSL/$model_name'_'Exchange_$seq_len'_'192.log 
 
-python -u run_longExp.py \
+python -u run_ssl.py \
   --is_training 1 \
   --root_path ./dataset/ \
   --data_path exchange_rate.csv \
   --model_id Exchange_$seq_len'_'336 \
   --model $model_name \
+  --ssl_model_id $ssl_model_name \
   --data custom \
   --features M \
   --seq_len $seq_len \
@@ -56,14 +60,15 @@ python -u run_longExp.py \
   --use_gpu True \
   --des 'Exp' \
   --individual \
-  --itr 1 --batch_size 32  --learning_rate 0.0005 >logs/LongForecasting/$model_name'-'individual'_'Exchange_$seq_len'_'336.log 
+  --itr 1 --batch_size 32  --learning_rate 0.0005 >logs/SSL/$model_name'_'Exchange_$seq_len'_'336.log 
 
-python -u run_longExp.py \
+python -u run_ssl.py \
   --is_training 1 \
   --root_path ./dataset/ \
   --data_path exchange_rate.csv \
   --model_id Exchange_$seq_len'_'720 \
   --model $model_name \
+  --ssl_model_id $ssl_model_name \
   --data custom \
   --features M \
   --seq_len $seq_len \
@@ -72,4 +77,4 @@ python -u run_longExp.py \
   --use_gpu True \
   --des 'Exp' \
   --individual \
-  --itr 1 --batch_size 32 --learning_rate 0.0005 >logs/LongForecasting/$model_name'-'individual'_'Exchange_$seq_len'_'720.log
+  --itr 1 --batch_size 32 --learning_rate 0.0005 >logs/SSL/$model_name'_'Exchange_$seq_len'_'720.log

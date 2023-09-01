@@ -35,6 +35,9 @@ class Exp_Main(Exp_Basic):
         }
         model = model_dict[self.args.model].Model(self.args).float()
 
+        if self.args.finetune:
+            model.load_state_dict(torch.load(self.args.pretrained_path + '/checkpoint.pth', map_location=self.device), strict=False)
+
         if self.args.use_multi_gpu and self.args.use_gpu:
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
         return model
@@ -44,7 +47,7 @@ class Exp_Main(Exp_Basic):
         return data_set, data_loader
 
     def _select_optimizer(self):
-        model_optim = optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
+        model_optim = optim.AdamW(self.model.parameters(), lr=self.args.learning_rate)
         return model_optim
 
     def _select_criterion(self):
@@ -125,6 +128,15 @@ class Exp_Main(Exp_Basic):
         if self.args.use_amp:
             scaler = torch.cuda.amp.GradScaler()
 
+        # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(model_optim, T_max=self.args.train_epochs, eta_min=self.args.learning_rate / 1000)
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer = model_optim,
+                                            steps_per_epoch = train_steps,
+                                            pct_start = self.args.pct_start,
+                                            epochs = self.args.train_epochs,
+                                            max_lr = self.args.learning_rate)
+
+        lr = self.args.learning_rate
+        
         for epoch in range(self.args.train_epochs):
             iter_count = 0
             train_loss = []
@@ -149,8 +161,8 @@ class Exp_Main(Exp_Basic):
                     with torch.cuda.amp.autocast():
                         if 'Linear' in self.args.model:
                             outputs = self.model(batch_x)
-                        elif self.args.model == 'Ours':
-                            outputs = self.model(batch_x)
+                        # elif self.args.model == 'Ours':
+                        #     outputs = self.model(batch_x)
                         else:
                             if self.args.output_attention:
                                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
@@ -173,7 +185,6 @@ class Exp_Main(Exp_Basic):
                             
                         else:
                             outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, batch_y)
-                    # print(outputs.shape,batch_y.shape)
                     f_dim = -1 if self.args.features == 'MS' else 0
                     outputs = outputs[:, -self.args.pred_len:, f_dim:]
                     batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
@@ -196,6 +207,10 @@ class Exp_Main(Exp_Basic):
                     loss.backward()
                     model_optim.step()
 
+                if self.args.lradj == 'cosine' or self.args.lradj == 'onecycle':
+                    adjust_learning_rate(model_optim, scheduler, epoch + 1, self.args, lr, printout=False)
+                    scheduler.step()
+
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             train_loss = np.average(train_loss)
             if not self.args.train_only:
@@ -214,7 +229,9 @@ class Exp_Main(Exp_Basic):
                 print("Early stopping")
                 break
 
-            adjust_learning_rate(model_optim, epoch + 1, self.args)
+            # lr = adjust_learning_rate(model_optim, scheduler, epoch + 1, self.args, lr)
+            # scheduler.step()
+            print('Updating learning rate to {}'.format(scheduler.get_last_lr()[0]))
 
         best_model_path = path + '/' + 'checkpoint.pth'
         self.model.load_state_dict(torch.load(best_model_path))
@@ -222,15 +239,26 @@ class Exp_Main(Exp_Basic):
         return self.model
 
     def test(self, setting, test=0):
+        torch.cuda.empty_cache()
+
         test_data, test_loader = self._get_data(flag='test')
         
         if test:
             print('loading model')
             self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
 
-        preds = []
-        trues = []
-        inputx = []
+        # preds = torch.zeros((0, self.args.pred_len, 1))
+        # trues = torch.zeros((0, self.args.pred_len, 1))
+        # inputx = torch.zeros((0, self.args.seq_len, 1))
+        maes = []
+        mses = []
+        rmses = []
+        mapes = []
+        mspes = []
+        rses = []
+        corrs = []
+        total_samples = 0
+
         folder_path = './test_results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
@@ -272,38 +300,64 @@ class Exp_Main(Exp_Basic):
                             outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
 
                 f_dim = -1 if self.args.features == 'MS' else 0
-                # print(outputs.shape,batch_y.shape)
+
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
                 batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
-                outputs = outputs.detach().cpu().numpy()
-                batch_y = batch_y.detach().cpu().numpy()
 
-                pred = outputs  # outputs.detach().cpu().numpy()  # .squeeze()
-                true = batch_y  # batch_y.detach().cpu().numpy()  # .squeeze()
+                mae, mse, rmse, mape, mspe, rse, corr = metric(outputs, batch_y)
+                mae *= np.prod(outputs.shape[:])
+                maes.append(mae)
+                mse *= np.prod(outputs.shape[:])
+                mses.append(mse)
+                rmse *= np.prod(outputs.shape[:])
+                rmses.append(rmse)
+                mape *= np.prod(outputs.shape[:])
+                mapes.append(mape)
+                mspe *= np.prod(outputs.shape[:])
+                mspes.append(mspe)
+                rse *= np.prod(outputs.shape[:])
+                rses.append(rse)
+                corr *= np.prod(outputs.shape[:])
+                corrs.append(corr)
+                total_samples += np.prod(outputs.shape[:])
 
-                preds.append(pred)
-                trues.append(true)
-                inputx.append(batch_x.detach().cpu().numpy())
-                if i % 20 == 0:
-                    input = batch_x.detach().cpu().numpy()
-                    gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
-                    pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
-                    visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
+                # if preds.shape[0] == 0:
+                #     preds = outputs
+                #     trues = batch_y
+                #     inputx = batch_x
+                # else:
+                #     preds = torch.cat((preds, outputs), dim=0)
+                #     trues = torch.cat((trues, batch_y), dim=0)
+                #     inputx = torch.cat((inputx, batch_x), dim=0)
+
+                # if i % 20 == 0:
+                #     input = batch_x.detach().cpu().numpy()
+                #     gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
+                #     pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
+                #     visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
 
         if self.args.test_flop:
             test_params_flop((batch_x.shape[1],batch_x.shape[2]))
             exit()
             
-        preds = np.concatenate(preds, axis=0)
-        trues = np.concatenate(trues, axis=0)
-        inputx = np.concatenate(inputx, axis=0)
+        # preds = np.concatenate(preds, axis=0)
+        # trues = np.concatenate(trues, axis=0)
+        # inputx = np.concatenate(inputx, axis=0)
 
         # result save
         folder_path = './results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
-        mae, mse, rmse, mape, mspe, rse, corr = metric(preds, trues)
+        # mae, mse, rmse, mape, mspe, rse, corr = metric(preds, trues)
+        mae = np.sum(maes) / total_samples
+        mse = np.sum(mses) / total_samples
+        rmse = np.sum(rmses) / total_samples
+        mape = np.sum(mapes) / total_samples
+        mspe = np.sum(mspes) / total_samples
+        rse = np.sum(rses) / total_samples
+        corr = np.sum(corrs) / total_samples
+        
         print('mse:{}, mae:{}'.format(mse, mae))
         f = open("result.txt", 'a')
         f.write(setting + "  \n")
@@ -313,7 +367,7 @@ class Exp_Main(Exp_Basic):
         f.close()
 
         # np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe,rse, corr]))
-        np.save(folder_path + 'pred.npy', preds)
+        # np.save(folder_path + 'pred.npy', preds)
         # np.save(folder_path + 'true.npy', trues)
         # np.save(folder_path + 'x.npy', inputx)
         return
