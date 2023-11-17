@@ -18,8 +18,7 @@ parser.add_argument('--train_only', type=bool, required=False, default=False, he
 parser.add_argument('--model_id', type=str, required=True, default='test', help='model id')
 parser.add_argument('--model', type=str, required=True, default='Autoformer',
                     help='model name, options: [Autoformer, Informer, Transformer]')
-parser.add_argument('--scales', nargs='+', type=int, default=[16, 8, 4, 1], help='time scales')
-parser.add_argument('--stride', type=int, default=16, help='stride')
+parser.add_argument('--scales', nargs='+', type=int, default=[4, 2, 1], help='time scales')
 parser.add_argument('--finetune', action='store_true', default=False, help='finetune the model')
 parser.add_argument('--pretrained_path', type=str, default='./checkpoints/BYOL_Exchange_96_96_Ours_custom_ftM_sl96_ll48_pl96_dm512_nh8_el2_dl1_df2048_fc1_ebtimeF_dtTrue_Exp_0', help='pretrained model path')
 
@@ -42,17 +41,30 @@ parser.add_argument('--pred_len', type=int, default=96, help='prediction sequenc
 
 # DLinear
 parser.add_argument('--individual', action='store_true', default=False, help='DLinear: a linear layer for each variate(channel) individually')
+
+# PatchTST
+parser.add_argument('--fc_dropout', type=float, default=0.2, help='fully connected dropout')
+parser.add_argument('--head_dropout', type=float, default=0.0, help='head dropout')
+parser.add_argument('--patch_len', type=int, default=16, help='patch length')
+parser.add_argument('--stride', type=int, default=8, help='stride')
+parser.add_argument('--padding_patch', default='end', help='None: None; end: padding on the end')
+parser.add_argument('--revin', type=int, default=1, help='RevIN; True 1 False 0')
+parser.add_argument('--affine', type=int, default=0, help='RevIN-affine; True 1 False 0')
+parser.add_argument('--subtract_last', type=int, default=0, help='0: subtract mean; 1: subtract last')
+parser.add_argument('--decomposition', type=int, default=0, help='decomposition; True 1 False 0')
+parser.add_argument('--kernel_size', type=int, default=25, help='decomposition-kernel')
+
 # Formers 
 parser.add_argument('--embed_type', type=int, default=0, help='0: default 1: value embedding + temporal embedding + positional embedding 2: value embedding + temporal embedding 3: value embedding + positional embedding 4: value embedding')
 parser.add_argument('--enc_in', type=int, default=7, help='encoder input size') # DLinear with --individual, use this hyperparameter as the number of channels
 parser.add_argument('--dec_in', type=int, default=7, help='decoder input size')
 parser.add_argument('--c_out', type=int, default=7, help='output size')
-parser.add_argument('--d_model', type=int, default=1024, help='dimension of model')
+parser.add_argument('--d_model', type=int, default=128, help='dimension of model')
 parser.add_argument('--n_heads', type=int, default=8, help='num of heads')
 parser.add_argument('--depth', type=int, default=1, help='attn factor')
 parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers')
 parser.add_argument('--d_layers', type=int, default=1, help='num of decoder layers')
-parser.add_argument('--d_ff', type=int, default=2048, help='dimension of fcn')
+parser.add_argument('--d_ff', type=int, default=256, help='dimension of fcn')
 parser.add_argument('--moving_avg', type=int, default=25, help='window size of moving average')
 parser.add_argument('--factor', type=int, default=1, help='attn factor')
 parser.add_argument('--distil', action='store_false',
@@ -66,8 +78,8 @@ parser.add_argument('--do_predict', action='store_true', help='whether to predic
 
 # TSMixer
 parser.add_argument('--norm_type', type=str, default='B', help='normalization type')
-parser.add_argument('--n_block', type=int, default=2, help='number of blocks')
-parser.add_argument('--dropout', type=float, default=0.9, help='dropout')
+parser.add_argument('--n_block', type=int, default=3, help='number of blocks')
+parser.add_argument('--dropout', type=float, default=0.2, help='dropout')
 parser.add_argument('--ff_dim', type=int, default=64, help='feed forward dimension')
 parser.add_argument('--target_slice', type=int, default=None, help='target slice')
 

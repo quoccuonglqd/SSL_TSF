@@ -11,14 +11,14 @@ class ResBlock(nn.Module):
             self.norm = nn.BatchNorm1d
         
         self.temporal_linear = nn.Sequential(
-            self.norm(-1),
+            self.norm(channel_dim),
             nn.ReLU(),
             nn.Linear(seq_len, seq_len),
             nn.Dropout(dropout)
         )
         
         self.feature_linear = nn.Sequential(
-            self.norm(-1),
+            self.norm(seq_len),
             nn.ReLU(),
             nn.Linear(channel_dim, ff_dim),
             nn.Dropout(dropout),
@@ -27,16 +27,17 @@ class ResBlock(nn.Module):
         )
     
     def forward(self, x):
-        res = x.clone()
+        res = x.clone()                                                    # (batch_size, seq_len, channel_dim)
+        x = self.temporal_linear(x.transpose(1, 2)).transpose(1, 2) + res  # (batch_size, seq_len, channel_dim)
 
-        x = self.temporal_linear(x.transpose(1, 2)).transpose(1, 2) + res
-        x = self.feature_linear(x.transpose(1, 2)).transpose(1, 2) + res
+        res = x.clone()
+        x = self.feature_linear(x) + res
         
         return x
 
-class TSMixer(nn.Module):
+class Model(nn.Module):
     def __init__(self, configs):
-        super(TSMixer, self).__init__()
+        super(Model, self).__init__()
         
         self.blocks = nn.ModuleList([ResBlock(configs.norm_type, configs.dropout, configs.ff_dim, configs.seq_len, configs.enc_in) for _ in range(configs.n_block)])
         
@@ -46,7 +47,7 @@ class TSMixer(nn.Module):
             nn.Linear(configs.seq_len, configs.pred_len)
         )
     
-    def forward(self, x):
+    def forward(self, x, x_mark_enc=None, x_dec=None, x_mark_dec=None):
         for block in self.blocks:
             x = block(x)
         

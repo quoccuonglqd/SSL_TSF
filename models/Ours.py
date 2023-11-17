@@ -4,8 +4,10 @@ import torch.nn.functional as F
 import numpy as np
 from functools import partial
 from einops.layers.torch import Rearrange, Reduce
+from einops import rearrange, reduce, repeat
 
 from models.embed import *
+from models.TSMixer import ResBlock
 
 import pdb
 
@@ -28,6 +30,71 @@ def FeedForward(dim, expansion_factor = 4, dropout = 0., dense = nn.Linear):
         nn.Dropout(dropout)
     )
 
+class ResBlock(nn.Module):
+    def __init__(self, norm_type, dropout, ff_dim, seq_len, channel_dim, out_len):
+        super(ResBlock, self).__init__()
+        
+        if norm_type == 'L':
+            self.norm = nn.LayerNorm
+        else:
+            self.norm = nn.BatchNorm2d
+        
+        self.temporal_linear = nn.Sequential(
+            self.norm(channel_dim),
+            nn.ReLU(),
+            nn.Linear(seq_len, out_len),
+            nn.Dropout(dropout)
+        )
+        
+        self.feature_linear = nn.Sequential(
+            self.norm(seq_len),
+            nn.ReLU(),
+            nn.Linear(channel_dim, ff_dim),
+            nn.Dropout(dropout),
+            nn.Linear(ff_dim, channel_dim),
+            nn.Dropout(dropout)
+        )
+    
+    def forward(self, x):
+        res = x.clone()                                                  # (batch_size, seq_len, channel_dim)                                                
+        x = self.temporal_linear(x) + res  
+
+        res = x.clone()
+        x = rearrange(self.feature_linear(rearrange(x, 'b c p l -> b l p c')), 'b l p c -> b c p l') + res
+        
+        return x
+    
+class CrossAttention(nn.Module):
+    def __init__(self, d_model, n_head, dropout, input_len, output_len):
+        super(CrossAttention, self).__init__()
+        self.d_model = d_model
+        self.n_head = n_head
+        self.dropout = dropout
+        self.query = nn.Linear(d_model, d_model * n_head)
+        self.key = nn.Linear(d_model, d_model * n_head)
+        self.value = nn.Linear(d_model, d_model * n_head)
+
+        self.linear = nn.Linear(input_len, output_len)
+
+    def forward(self, query, key, value):
+        query = self.query(query)
+        key = self.key(key)
+        value = self.value(value)
+
+        query = rearrange(query, 'b l (h d) -> b h l d', h=self.n_head)
+        key = rearrange(key, 'b l (h d) -> b h l d', h=self.n_head)
+        value = rearrange(value, 'b l (h d) -> b h l d', h=self.n_head)
+
+        attn = torch.einsum('bhld,bhkd->bhkl', query, key) / np.sqrt(self.d_model)
+        attn = F.softmax(attn, dim=-1)
+        attn = F.dropout(attn, p=self.dropout, training=self.training)
+        out = torch.einsum('bhkl,bhld->bhkd', attn, value)
+        out = reduce(out, 'b h l d -> b l d', 'mean')
+        out = self.linear(rearrange(out, 'b l d -> b d l'))
+        return out
+
+
+                
 class MLPMixer(nn.Module):
     def __init__(self, seq_len, pred_len, channels, patch_size, dim, depth, expansion_factor = 4, expansion_factor_token = 0.5, dropout = 0.5):
         super(MLPMixer, self).__init__()
@@ -108,7 +175,10 @@ class Model(nn.Module):
         self.channels = configs.enc_in
         self.dim = configs.d_model
         self.depth = configs.depth
-        # self.stride = configs.stride
+        self.ff_dim = configs.ff_dim
+        self.dropout = configs.dropout
+        self.norm_type = configs.norm_type
+
         self.inverse_scale = 1 / np.array(self.scales, dtype=np.float32)
         device = 'cuda' if configs.use_gpu and torch.cuda.is_available() else 'cpu'
         self.scale_weight = F.softmax(torch.from_numpy(self.inverse_scale).to(device), dim=0)
@@ -122,39 +192,31 @@ class Model(nn.Module):
         self.seasonal_backbones = nn.ModuleList()
         # self.pooling_layers = nn.ModuleList()
         for scale in self.scales:
-            # ceiled_seq_len = np.ceil(self.seq_len / scale).astype(int)
             ceiled_seq_len = np.ceil(self.seq_len / scale).astype(int)
             ceiled_pred_len = np.ceil(self.pred_len / scale).astype(int)
 
             if self.individual:
                 mlp_layer = nn.ModuleDict() 
                 for i in range(self.channels):
-                    # mlp_layer[str(i)] = nn.Linear(ceiled_seq_len, ceiled_seq_len + ceiled_pred_len)
-                    # mlp_layer[str(i)] = nn.Linear(ceiled_seq_len  + ceiled_pred_len , ceiled_seq_len + ceiled_pred_len)
-                    mlp_layer[str(i)] = nn.Sequential(
-                        nn.Linear(ceiled_seq_len  + ceiled_pred_len, (ceiled_seq_len  + ceiled_pred_len)//2),
-                        nn.GELU(),
-                        nn.Dropout(0.5),
-                        nn.Linear((ceiled_seq_len  + ceiled_pred_len)//2, ceiled_seq_len + ceiled_pred_len)
-                    )
+                    mlp_layer[str(i)] = nn.Linear(ceiled_seq_len  + ceiled_pred_len , ceiled_seq_len + ceiled_pred_len)
 
                 self.seasonal_backbones.append(mlp_layer)
             else:
-                seasonal_backbone = nn.ModuleList()
-                seasonal_backbone.append(nn.Conv1d(self.channels, self.channels, kernel_size=3, padding = 'same'))
-                seasonal_backbone.append(nn.Linear(ceiled_seq_len  + ceiled_pred_len, ceiled_seq_len + ceiled_pred_len))
-                self.seasonal_backbones.append(seasonal_backbone)
-                # self.seasonal_backbones.append(nn.Linear(ceiled_seq_len  + ceiled_pred_len, ceiled_seq_len + ceiled_pred_len))
+                self.seasonal_backbones.append(ResBlock(self.norm_type, self.dropout, self.ff_dim, ceiled_seq_len + ceiled_pred_len, self.channels, ceiled_seq_len + ceiled_pred_len))
+                # self.seasonal_backbones.append(CrossAttention(self.channels, 2, self.dropout, ceiled_seq_len + ceiled_pred_len, ceiled_seq_len + ceiled_pred_len))
 
-        if self.individual:
-            self.trend_head = nn.ModuleDict()
-            # self.seasonal_head = nn.ModuleDict()
-            for i in range(self.channels):
-                self.trend_head[str(i)] = nn.Linear(self.seq_len, self.pred_len)
-                # self.seasonal_head[str(i)] = nn.Linear(self.pred_len, self.pred_len)
-        else:
-            self.trend_head = nn.Linear(self.seq_len, self.pred_len)
-            self.seasonal_head = nn.Linear(self.pred_len, self.pred_len)
+            # self.pooling_layers.append(nn.MaxPool1d(kernel_size=scale, stride=scale, padding=0))
+
+
+        # if self.individual:
+        #     self.trend_head = nn.ModuleDict()
+        #     # self.seasonal_head = nn.ModuleDict()
+        #     for i in range(self.channels):
+        #         self.trend_head[str(i)] = nn.Linear(self.seq_len, self.pred_len)
+        #         # self.seasonal_head[str(i)] = nn.Linear(self.pred_len, self.pred_len)
+        # else:
+        self.trend_head = nn.Linear(self.seq_len, self.pred_len)
+        self.seasonal_head = nn.Linear(self.pred_len, self.pred_len)
 
         self.embedding = PositionalEmbedding(self.channels)
             
@@ -203,17 +265,16 @@ class Model(nn.Module):
                         .unfold(-1, self.scales[ind], self.scales[ind]).permute(0,2,1)) 
                         for i in range(self.channels)], dim=1)
             else:
-                x = nn.BatchNorm1d(self.channels)(x)
-                z = nn.Dropout(0.1)(self.seasonal_backbones[ind][0](x)) + x
-                z = z.unfold(-1, self.scales[ind], self.scales[ind]).permute(0,1,3,2)
-                z = self.seasonal_backbones[ind][1](z)
-                
-                # z = self.seasonal_backbones[ind](x.unfold(-1, self.scales[ind], self.scales[ind]).permute(0,1,3,2))
+                z = self.seasonal_backbones[ind](rearrange(x.unfold(-1, self.scales[ind], self.scales[ind]), 'b c l p -> b c p l'))
+            
+            #     z = rearrange(self.pooling_layers[ind](x), 'b c l -> b l c')
+            #     positional_embedding = self.embedding(z)
+            #     z = self.seasonal_backbones[ind](positional_embedding, z, z)
+
 
             # z = F.interpolate(z, size=self.seq_len + self.pred_len, mode='linear')
             z = nn.Flatten(2,3)(z)
 
-            # x = prev_x - z[:,:,:self.seq_len]
             x = prev_x[:,:,:self.seq_len ] - z[:,:,:self.seq_len]
             z = z[:,:,self.seq_len:]
 
